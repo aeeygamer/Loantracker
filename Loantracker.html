@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเช็คสถานะยื่นกู้ออนไลน์ (PDPA Secure Tracker)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Prompt & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PapaParse (CSV Parser) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Chart.js CDN for Interactive Dashboard Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: 'Prompt', 'Inter', sans-serif;
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        /* Custom scrollbar for desktop tables */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @keyframes pulse-soft {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.01); opacity: 0.95; }
+        }
+        .animate-pulse-soft {
+            animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-blue-50/40 min-h-screen text-slate-800 antialiased">
+
+    <!-- Top Navigation Header -->
+    <nav class="sticky top-0 z-30 w-full border-b border-slate-100 bg-white/80 backdrop-blur-md transition-all">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-500/20">
+                        <i data-lucide="shield-check" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-lg text-slate-900 tracking-tight block leading-tight">Live Loan Status Tracker</span>
+                        <span class="text-xs text-slate-500 font-medium">สืบค้นสถานะและคัดกรองสิทธิ์ตามเกณฑ์ PDPA มศก.</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <button id="btn-config" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>ตั้งค่าชีต</span>
+                    </button>
+                    <button id="btn-manual" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition">
+                        <i data-lucide="help-circle" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">วิธีใช้งาน</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+        
+        <!-- Search Hero Section -->
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center space-x-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-full text-emerald-800 text-xs font-semibold mb-4">
+                <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-emerald-600"></i>
+                <span>นโยบายคุ้มครองข้อมูลส่วนบุคคล (PDPA Compliant) บล็อกอีเมลและข้อมูลไม่จำเป็นเรียบร้อย</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">ระบบตรวจสอบสถานะเอกสารยื่นกู้</h1>
+            <p class="text-slate-500 text-sm sm:text-base mt-2 max-w-xl mx-auto">ระบุชื่อ-นามสกุล หรือรหัสประจำตัวของคุณ เพื่อเช็คสถานะและขั้นตอนที่ต้องดำเนินการถัดไป</p>
+        </div>
+
+        <!-- Connection Alert / Empty State Prompt -->
+        <div id="conn-status-banner" class="hidden mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 flex items-start space-x-3 shadow-sm">
+            <i data-lucide="alert-triangle" class="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-600"></i>
+            <div>
+                <h4 class="font-semibold text-sm">ยังไม่ได้เชื่อมข้อมูลเข้าสู่ฐานข้อมูลหลัก</h4>
+                <p class="text-xs text-amber-700 mt-1">กรุณากดปุ่ม <b>"ตั้งค่าระบบ"</b> ที่มุมบนขวา เพื่อกรอกลิงก์แผ่นงาน Google Sheets หรือทำตาม <b>"วิธีใช้งาน"</b></p>
+            </div>
+        </div>
+
+        <!-- Main Search Panel -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-lg p-6 sm:p-8 mb-8 transition-all hover:shadow-xl">
+            <form id="search-form" class="space-y-4" onsubmit="event.preventDefault(); handleSearchAction();">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                        <span>ระบุคำค้นหาเพื่อเช็คสถานะการยื่นกู้</span>
+                        <span class="text-xs text-slate-400 font-normal">(ค้นหาได้เฉพาะ ชื่อจริง, นามสกุล หรือ รหัสนักศึกษา)</span>
+                    </label>
+                    <div class="relative flex flex-col sm:flex-row gap-3">
+                        <div class="relative flex-1">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                                <i data-lucide="search" class="w-5 h-5"></i>
+                            </div>
+                            <input type="text" id="search-input" 
+                                   placeholder="ระบุชื่อจริง, นามสกุล หรือรหัสประจำตัว..." 
+                                   class="block w-full pl-11 pr-10 py-3.5 border border-slate-200 rounded-xl bg-slate-50/50 hover:bg-slate-50 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition text-base outline-none font-medium">
+                            <button type="button" id="clear-search" class="hidden absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-500/10 text-base font-semibold transition active:scale-95">
+                            <i data-lucide="search" class="w-5 h-5"></i>
+                            <span>ตรวจสอบข้อมูล</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Metadata/Sync and Privacy status -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-6 pt-6 border-t border-slate-100 text-xs text-slate-500">
+                <div class="flex items-center space-x-2">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300" id="sync-indicator"></span>
+                    <span id="last-updated-text">ยังไม่มีการสืบค้นข้อมูลในเซสชันนี้</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button type="button" id="btn-sync" class="inline-flex items-center space-x-1 py-1 px-2 hover:bg-slate-100 rounded-md text-slate-600 transition">
+                        <i data-lucide="rotate-cw" id="sync-icon" class="w-3.5 h-3.5"></i>
+                        <span>รีเฟรชฐานข้อมูล</span>
+                    </button>
+                    <span class="text-slate-300">|</span>
+                    <span id="pdpa-badge-count" class="inline-flex items-center text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
+                        <i data-lucide="shield" class="w-3.5 h-3.5 mr-1"></i>
+                        <span>PDPA Filter Active</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Initial Blank Welcome State -->
+        <div id="welcome-state" class="py-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white/40 p-6">
+            <div class="inline-flex items-center justify-center p-4 bg-blue-50 text-blue-600 rounded-full mb-4">
+                <i data-lucide="lock" class="w-10 h-10"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">กรุณาพิมพ์ค้นหาข้อมูลเพื่อตรวจสอบผล</h3>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                ระบบจะไม่เปิดเผยข้อมูลเป็นตารางทั้งหมดเพื่อคุ้มครองข้อมูลส่วนบุคคลของกองกลางและผู้ยื่นกู้ ข้อมูลเฉพาะของคุณจะปรากฏเมื่อระบุคำค้นหาอย่างถูกต้องแล้วเท่านั้น
+            </p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="hidden py-16 text-center">
+            <div class="inline-flex items-center justify-center p-4 bg-blue-50 text-blue-600 rounded-full mb-4 animate-bounce">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
+            </div>
+            <h3 class="text-base font-semibold text-slate-800">กำลังสืบค้นและคัดกรองความปลอดภัยข้อมูล...</h3>
+            <p class="text-xs text-slate-500 mt-1">คัดกรองข้อมูลสิทธิ์และปิดบังคอลัมน์สำคัญที่ละเมิด PDPA...</p>
+        </div>
+
+        <!-- Connection Error Display -->
+        <div id="error-state" class="hidden py-8 px-4 sm:px-6 bg-white border border-slate-100 rounded-2xl shadow-sm">
+            <div class="text-center">
+                <div class="inline-flex items-center justify-center p-4 bg-rose-50 text-rose-600 rounded-full mb-4">
+                    <i data-lucide="unplug" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-900">ไม่สามารถเชื่อมต่อข้อมูลได้</h3>
+                <p id="error-message" class="text-sm text-slate-500 mt-2 max-w-md mx-auto">สิทธิ์เข้าถึงข้อมูลถูกปฏิเส์ หรือรูปแบบลิงก์ไม่ถูกต้อง</p>
+            </div>
+
+            <div class="mt-6 border-t border-slate-100 pt-6">
+                <h4 class="font-bold text-sm text-slate-800 mb-3 flex items-center gap-1.5">
+                    <i data-lucide="help-circle" class="w-4 h-4 text-blue-500"></i>
+                    วิธีการแก้ไขสิทธิ์การใช้งาน:
+                </h4>
+                <div class="space-y-4 text-xs sm:text-sm text-slate-600">
+                    <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-3 flex gap-2">
+                        <span class="font-bold text-amber-700 text-xs mt-0.5">วิธีที่ 1:</span>
+                        <div>
+                            <p class="font-semibold text-slate-900">แชร์ชีตของคุณเป็นสาธารณะ (เปิดสิทธิ์การอ่าน)</p>
+                            <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                                กดปุ่ม <b>"แชร์" (Share)</b> ที่มุมขวาบนใน Google Sheet ของคุณ -> เปลี่ยนสิทธิ์ทั่วไปเป็น <b>"ทุกคนที่มีลิงก์" (Anyone with the link)</b> และเลือกบทบาทเป็น <b>"ผู้มีสิทธิ์อ่าน" (Viewer)</b> จากนั้นกดรีเฟรชระบบใหม่อีกครั้ง
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center border-t border-slate-100 pt-6">
+                <button onclick="retryConnection()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition shadow-sm">
+                    ลองเชื่อมต่อใหม่อีกครั้ง
+                </button>
+                <button onclick="openConfigModal()" class="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm font-medium transition text-slate-700">
+                    เปลี่ยนลิงก์ Google Sheet
+                </button>
+            </div>
+        </div>
+
+        <!-- 🛡️ PDPA Explicit Lookup Warning State (Added for restricting searches) -->
+        <div id="search-warning-state" class="hidden py-8 px-6 bg-amber-50 border border-amber-200 rounded-2xl shadow-sm text-center max-w-md mx-auto">
+            <div class="inline-flex items-center justify-center p-4 bg-amber-100 text-amber-700 rounded-full mb-4 animate-bounce">
+                <i data-lucide="shield-alert" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-lg font-bold text-amber-900">ตรวจพบการสืบค้นที่ไม่ปลอดภัย</h3>
+            <p id="search-warning-message" class="text-sm text-amber-800 mt-2 max-w-sm mx-auto leading-relaxed">
+                ระบบจำกัดสิทธิ์การสืบค้นเฉพาะ ชื่อจริง, นามสกุล หรือรหัสนักศึกษา เพื่อความมั่นคงปลอดภัยตามเกณฑ์ PDPA มศก.
+            </p>
+        </div>
+
+        <!-- Empty Result State -->
+        <div id="empty-state" class="hidden py-16 text-center bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+            <div class="inline-flex items-center justify-center p-4 bg-slate-100 text-slate-400 rounded-full mb-4">
+                <i data-lucide="search-code" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">ไม่พบสถานะข้อมูลยื่นกู้ที่ค้นหา</h3>
+            <p class="text-sm text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">โปรดตรวจสอบการสะกดคำ หรือรหัสอ้างอิงของท่านให้ถูกต้อง และระลึกไว้ว่าข้อมูลที่ละเมิด PDPA เช่น อีเมลและประทับเวลา จะไม่ถูกนำมาร่วมสืบค้น</p>
+        </div>
+
+        <!-- Data Content Section (Displays only after searching) -->
+        <div id="data-container" class="hidden space-y-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                    <h2 class="text-sm font-bold text-slate-600 uppercase tracking-wider">ผลลัพธ์การสืบค้นสถานะปัจจุบันของคุณ</h2>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="result-count" class="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full">พบ 0 รายการ</span>
+                </div>
+            </div>
+
+            <!-- Highly Visual Status Tracking Container (Timeline Cards) -->
+            <div id="tracking-cards-container" class="space-y-4">
+                <!-- Dynamic tracking cards optimized for STATUS & DOCUMENT SUBMISSION (DATE/TIME) will load here -->
+            </div>
+        </div>
+
+        <!-- 📊 NEW HIGH-IMPACT REAL-TIME STATS DASHBOARD SECTION (Sits at the bottom of the page) -->
+        <div id="dashboard-section" class="hidden mt-10 bg-white rounded-3xl border border-slate-100 shadow-lg p-6 sm:p-8 transition-all hover:shadow-xl">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-5 mb-6">
+                <div class="flex items-center space-x-2.5">
+                    <div class="p-2 bg-slate-50 text-blue-600 rounded-xl border border-slate-100">
+                        <i data-lucide="bar-chart-3" class="w-5.5 h-5.5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 tracking-tight">รายงานสถิติภาพรวมการยื่นกู้ (กองกลาง)</h2>
+                        <p class="text-xs text-slate-400 font-medium mt-0.5">สรุปผลแบบเรียลไทม์ตามฐานข้อมูล Google Sheets</p>
+                    </div>
+                </div>
+                <span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    Live Dashboard
+                </span>
+            </div>
+
+            <!-- Dashboard Key Metrics Row (Submitted vs Pending with % totals) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                <!-- Metric 1: Total Applicants -->
+                <div class="bg-gradient-to-br from-slate-50 to-slate-100/50 p-5 rounded-2xl border border-slate-100 text-center relative overflow-hidden group">
+                    <div class="absolute -right-3 -bottom-3 text-slate-200/50 opacity-50 group-hover:scale-110 transition-transform">
+                        <i data-lucide="users" class="w-16 h-16"></i>
+                    </div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">ผู้ยื่นกู้ทั้งหมดในชีต</p>
+                    <h3 id="stat-total-count" class="text-3xl font-black text-slate-900 tracking-tight">0</h3>
+                    <p class="text-[10px] font-semibold text-slate-400 mt-1">ประมวลผลเสร็จสิ้นแบบกลุ่ม</p>
+                </div>
+
+                <!-- Metric 2: Submitted Counts -->
+                <div class="bg-gradient-to-br from-emerald-50/50 to-emerald-50 p-5 rounded-2xl border border-emerald-100/50 text-center relative overflow-hidden group">
+                    <div class="absolute -right-3 -bottom-3 text-emerald-100/60 opacity-50 group-hover:scale-110 transition-transform">
+                        <i data-lucide="check-circle-2" class="w-16 h-16"></i>
+                    </div>
+                    <p class="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">ส่งเอกสารเรียบร้อยแล้ว</p>
+                    <h3 id="stat-submitted-count" class="text-3xl font-black text-emerald-600 tracking-tight">0</h3>
+                    <p id="stat-submitted-percent" class="text-[10px] font-bold text-emerald-700 mt-1">คิดเป็น 0% ของภาพรวม</p>
+                </div>
+
+                <!-- Metric 3: Pending Counts -->
+                <div class="bg-gradient-to-br from-amber-50/50 to-amber-50 p-5 rounded-2xl border border-amber-100/50 text-center relative overflow-hidden group">
+                    <div class="absolute -right-3 -bottom-3 text-amber-100/60 opacity-50 group-hover:scale-110 transition-transform">
+                        <i data-lucide="clock" class="w-16 h-16"></i>
+                    </div>
+                    <p class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">อยู่ระหว่างรอดำเนินการส่ง</p>
+                    <h3 id="stat-pending-count" class="text-3xl font-black text-amber-600 tracking-tight">0</h3>
+                    <p id="stat-pending-percent" class="text-[10px] font-bold text-amber-700 mt-1">คิดเป็น 0% ของภาพรวม</p>
+                </div>
+            </div>
+
+            <!-- Charts Container: Displays stunning Pie and Bar charts in responsive grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <!-- Chart 1: Ratio Pie Chart (สัดส่วน) -->
+                <div class="bg-slate-50/50 border border-slate-100 p-4 sm:p-5 rounded-2xl">
+                    <h4 class="text-xs sm:text-sm font-bold text-slate-700 mb-4 flex items-center gap-1.5">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-blue-500"></i>
+                        แผนภูมิตรวจสอบความสมบูรณ์ของเอกสาร
+                    </h4>
+                    <div class="relative h-60 w-full flex justify-center items-center">
+                        <canvas id="pieChartCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Grade/Year Distribution Bar Chart -->
+                <div class="bg-slate-50/50 border border-slate-100 p-4 sm:p-5 rounded-2xl">
+                    <h4 class="text-xs sm:text-sm font-bold text-slate-700 mb-4 flex items-center gap-1.5">
+                        <i data-lucide="bar-chart" class="w-4 h-4 text-blue-500"></i>
+                        การกระจายตัวของผู้สมัครตามชั้นปีนักศึกษา
+                    </h4>
+                    <div class="relative h-60 w-full flex justify-center items-center">
+                        <canvas id="barChartCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 1. CONFIGURATION & PDPA PRIVACY MODAL -->
+    <div id="modal-config" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" aria-hidden="true" id="close-config-bg"></div>
+
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <!-- Modal Panel -->
+            <div class="relative inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full border border-slate-100">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+                                <i data-lucide="settings-2" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-950">ตั้งค่าความเชื่อมโยง & แผ่นงาน</h3>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600 focus:outline-none" id="close-config-btn">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">ลิงก์ Google Sheets สำหรับสืบค้น</label>
+                            <input type="text" id="input-sheet-url" 
+                                   placeholder="https://docs.google.com/spreadsheets/d/.../edit" 
+                                   class="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm outline-none font-medium">
+                        </div>
+
+                        <!-- FALLBACK STATUS CONFIGURATION -->
+                        <div class="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                            <label class="block text-xs sm:text-sm font-bold text-blue-900 mb-1.5">คำแสดงผลเริ่มต้นเมื่อไม่ผ่าน/ไม่มีข้อมูลสถานะ</label>
+                            <input type="text" id="input-fallback-status" 
+                                   placeholder="ให้ทำการส่งเอกสารตามเวลาที่กำหนด เพื่อดำเนินการในขั้นตอนต่อไป" 
+                                   class="w-full px-3 py-2.5 border border-blue-200 bg-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm outline-none font-bold text-amber-800">
+                            <p class="text-[11px] text-blue-700/80 mt-1.5">ระบบจะตั้งค่าคำนี้เป็นหลักเพื่อแสดงเมื่อไม่พบคำว่า "ผ่าน" ในช่องสถานะ</p>
+                        </div>
+
+                        <!-- DYNAMIC PDPA CONFIGURATION SECTION -->
+                        <div class="border-t border-slate-100 pt-4">
+                            <h4 class="font-bold text-sm text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-600"></i>
+                                คอลัมน์อื่นๆ ที่นอกเหนือระบบคัดกรองอัตโนมัติ
+                            </h4>
+                            <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">ระบบหลักได้บล็อก Timestamp, อีเมล, และข้อความยินยอม มศก. แบบถาวรเรียบร้อย คุณสามารถเลือกซ่อนคอลัมน์อื่นเพิ่มเติมได้ที่นี่:</p>
+                            
+                            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 max-h-40 overflow-y-auto space-y-2.5" id="pdpa-headers-list">
+                                <p class="text-xs text-slate-400 italic text-center py-2">จะแสดงคอลัมน์ทั่วไปเมื่อระบบตรวจสอบฐานข้อมูลชีตเสร็จสมบูรณ์</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex space-x-3 justify-end">
+                        <button id="btn-config-reset" class="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition">
+                            ใช้ตารางตั้งต้น
+                        </button>
+                        <button id="btn-config-save" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition shadow-sm">
+                            บันทึกการตั้งค่า
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. INSTRUCTION MANUAL MODAL -->
+    <div id="modal-manual" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" aria-hidden="true" id="close-manual-bg"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div class="relative inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full border border-slate-100">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                                <i data-lucide="help-circle" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-950">วิธีผูกตารางเข้าใช้งาน</h3>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600 focus:outline-none" id="close-manual-btn">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Steps Timeline -->
+                    <div class="space-y-6 text-slate-700 text-sm">
+                        <div class="flex space-x-3">
+                            <div class="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-bold text-xs mt-0.5">1</div>
+                            <div>
+                                <h4 class="font-bold text-slate-900">แชร์เอกสาร Google Sheets</h4>
+                                <p class="text-slate-500 text-xs mt-1 leading-relaxed">เปิด Google Sheets ของคุณที่เก็บข้อมูล -> คลิกปุ่ม <b>"แชร์" (Share)</b> ที่มุมขวาบน -> ปรับเป็น <b>"ทุกคนที่มีลิงก์สิทธิ์มีสิทธิ์อ่าน" (Anyone with the link can view)</b></p>
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <div class="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-bold text-xs mt-0.5">2</div>
+                            <div>
+                                <h4 class="font-bold text-slate-900">คัดลอกลิงก์มาใช้</h4>
+                                <p class="text-slate-500 text-xs mt-1 leading-relaxed">คัดลอกเบราว์เซอร์ URL ของ Google Sheets จากนั้นกดปุ่ม <b>"ตั้งค่าระบบ"</b> เพื่อกดบันทึกลงไปในเครื่องของท่าน</p>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-slate-100 pt-4 bg-slate-50/50 -mx-6 -mb-6 p-6">
+                            <p class="text-xs text-slate-500 leading-relaxed font-medium">🛡️ นโยบายการปกป้องความเป็นส่วนตัวขั้นสูง: ข้อมูลความยินยอม, อีเมล และ Timestamp จะถูกตัดออกจากตัวดึงข้อมูลตั้งแต่ระดับแกนประมวลผล ไม่มีความเสี่ยงเรื่องกฎหมายข้อมูลส่วนตัวรั่วไหล</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. ROW DETAIL MODAL (Opens when clicking on a card or row) -->
+    <div id="modal-detail" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" aria-hidden="true" id="close-detail-bg"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div class="relative inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-slate-100">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                                <i data-lucide="file-text" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold text-slate-950">ข้อมูลสรุปยื่นกู้ฉบับเต็ม</h3>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600 focus:outline-none" id="close-detail-btn">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <div class="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto pr-1" id="detail-fields-container">
+                        <!-- Dynamic detail fields will inject here -->
+                    </div>
+
+                    <div class="mt-6">
+                        <button id="close-detail-bottom-btn" class="w-full px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition">
+                            ปิดหน้าต่าง
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        // Default Google Sheet ID
+        const DEFAULT_SHEET_ID = "1FZ63sUQolj6Li1WtXTUzyv6PL4ZCgSVvajLfh9TR9z4";
+        
+        // Application State
+        let state = {
+            sheetUrl: localStorage.getItem('user_sheet_url') || `https://docs.google.com/spreadsheets/d/${DEFAULT_SHEET_ID}/edit?usp=sharing`,
+            hiddenHeaders: JSON.parse(localStorage.getItem('user_hidden_headers') || '[]'),
+            maskedHeaders: JSON.parse(localStorage.getItem('user_masked_headers') || '[]'),
+            fallbackStatusText: localStorage.getItem('user_fallback_status') || 'ให้ทำการส่งเอกสารตามเวลาที่กำหนด เพื่อดำเนินการในขั้นตอนต่อไป',
+            rawHeaders: [],
+            rawData: [],
+            filteredData: [],
+            searchQuery: '',
+            isDatabaseLoaded: false,
+            // Store chart instances to prevent canvas reuse errors
+            charts: {
+                pie: null,
+                bar: null
+            }
+        };
+
+        // DOM elements cache
+        const dom = {
+            searchInput: document.getElementById('search-input'),
+            clearSearch: document.getElementById('clear-search'),
+            btnSync: document.getElementById('btn-sync'),
+            syncIcon: document.getElementById('sync-icon'),
+            syncIndicator: document.getElementById('sync-indicator'),
+            lastUpdatedText: document.getElementById('last-updated-text'),
+            resultCount: document.getElementById('result-count'),
+            
+            welcomeState: document.getElementById('welcome-state'),
+            loadingState: document.getElementById('loading-state'),
+            errorState: document.getElementById('error-state'),
+            errorMessage: document.getElementById('error-message'),
+            searchWarningState: document.getElementById('search-warning-state'), // Added for security
+            searchWarningMessage: document.getElementById('search-warning-message'), // Added for security
+            emptyState: document.getElementById('empty-state'),
+            dataContainer: document.getElementById('data-container'),
+            connStatusBanner: document.getElementById('conn-status-banner'),
+            
+            trackingCardsContainer: document.getElementById('tracking-cards-container'),
+            
+            // Dashboard DOM elements
+            dashboardSection: document.getElementById('dashboard-section'),
+            statTotalCount: document.getElementById('stat-total-count'),
+            statSubmittedCount: document.getElementById('stat-submitted-count'),
+            statSubmittedPercent: document.getElementById('stat-submitted-percent'),
+            statPendingCount: document.getElementById('stat-pending-count'),
+            statPendingPercent: document.getElementById('stat-pending-percent'),
+            
+            // Modals
+            btnConfig: document.getElementById('btn-config'),
+            modalConfig: document.getElementById('modal-config'),
+            closeConfigBg: document.getElementById('close-config-bg'),
+            closeConfigBtn: document.getElementById('close-config-btn'),
+            inputSheetUrl: document.getElementById('input-sheet-url'),
+            inputFallbackStatus: document.getElementById('input-fallback-status'),
+            btnConfigReset: document.getElementById('btn-config-reset'),
+            btnConfigSave: document.getElementById('btn-config-save'),
+            pdpaHeadersList: document.getElementById('pdpa-headers-list'),
+            pdpaBadgeCount: document.getElementById('pdpa-badge-count'),
+            
+            btnManual: document.getElementById('btn-manual'),
+            modalManual: document.getElementById('modal-manual'),
+            closeManualBg: document.getElementById('close-manual-bg'),
+            closeManualBtn: document.getElementById('close-manual-btn'),
+            
+            modalDetail: document.getElementById('modal-detail'),
+            closeDetailBg: document.getElementById('close-detail-bg'),
+            closeDetailBtn: document.getElementById('close-detail-btn'),
+            closeDetailBottomBtn: document.getElementById('close-detail-bottom-btn'),
+            detailFieldsContainer: document.getElementById('detail-fields-container')
+        };
+
+        // Initialize App on Window Load
+        window.onload = function() {
+            lucide.createIcons();
+            dom.inputSheetUrl.value = state.sheetUrl;
+            dom.inputFallbackStatus.value = state.fallbackStatusText;
+            setupEventListeners();
+            loadDatabaseSilently();
+        };
+
+        function setupEventListeners() {
+            dom.searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                if (query) {
+                    dom.clearSearch.classList.remove('hidden');
+                } else {
+                    dom.clearSearch.classList.add('hidden');
+                    resetToWelcomeState();
+                }
+            });
+
+            dom.clearSearch.addEventListener('click', () => {
+                dom.searchInput.value = '';
+                dom.clearSearch.classList.add('hidden');
+                resetToWelcomeState();
+                dom.searchInput.focus();
+            });
+
+            dom.btnSync.addEventListener('click', () => {
+                loadDatabaseSilently(true);
+            });
+
+            dom.btnConfig.addEventListener('click', openConfigModal);
+            dom.closeConfigBg.addEventListener('click', closeConfigModal);
+            dom.closeConfigBtn.addEventListener('click', closeConfigModal);
+            
+            dom.btnConfigReset.addEventListener('click', () => {
+                dom.inputSheetUrl.value = `https://docs.google.com/spreadsheets/d/${DEFAULT_SHEET_ID}/edit?usp=sharing`;
+                dom.inputFallbackStatus.value = "ให้ทำการส่งเอกสารตามเวลาที่กำหนด เพื่อดำเนินการในขั้นตอนต่อไป";
+                state.hiddenHeaders = [];
+                state.maskedHeaders = [];
+                localStorage.removeItem('user_hidden_headers');
+                localStorage.removeItem('user_masked_headers');
+                localStorage.removeItem('user_fallback_status');
+                renderPDPASettings();
+            });
+
+            dom.btnConfigSave.addEventListener('click', () => {
+                const url = dom.inputSheetUrl.value.trim();
+                const fallbackStatus = dom.inputFallbackStatus.value.trim() || "ให้ทำการส่งเอกสารตามเวลาที่กำหนด เพื่อดำเนินการในขั้นตอนต่อไป";
+                if (!url) {
+                    alert("กรุณากรอกลิงก์ Google Sheets");
+                    return;
+                }
+                
+                const updatedHidden = [];
+                const updatedMasked = [];
+                state.rawHeaders.forEach(header => {
+                    const selectedOption = document.querySelector(`input[name="pdpa_${header}"]:checked`);
+                    if (selectedOption) {
+                        if (selectedOption.value === 'hide') {
+                            updatedHidden.push(header);
+                        } else if (selectedOption.value === 'mask') {
+                            updatedMasked.push(header);
+                        }
+                    }
+                });
+                
+                state.hiddenHeaders = updatedHidden;
+                state.maskedHeaders = updatedMasked;
+                state.fallbackStatusText = fallbackStatus;
+                
+                localStorage.setItem('user_sheet_url', url);
+                localStorage.setItem('user_fallback_status', fallbackStatus);
+                localStorage.setItem('user_hidden_headers', JSON.stringify(updatedHidden));
+                localStorage.setItem('user_masked_headers', JSON.stringify(updatedMasked));
+                
+                state.sheetUrl = url;
+                closeConfigModal();
+                loadDatabaseSilently(true);
+            });
+
+            dom.btnManual.addEventListener('click', openManualModal);
+            dom.closeManualBg.addEventListener('click', closeManualModal);
+            dom.closeManualBtn.addEventListener('click', closeManualModal);
+
+            dom.closeDetailBg.addEventListener('click', closeDetailModal);
+            dom.closeDetailBtn.addEventListener('click', closeDetailModal);
+            dom.closeDetailBottomBtn.addEventListener('click', closeDetailModal);
+        }
+
+        function openConfigModal() { 
+            renderPDPASettings();
+            dom.modalConfig.classList.remove('hidden'); 
+        }
+        function closeConfigModal() { dom.modalConfig.classList.add('hidden'); }
+        function openManualModal() { dom.modalManual.classList.remove('hidden'); }
+        function closeManualModal() { dom.modalManual.classList.add('hidden'); }
+        function openDetailModal() { dom.modalDetail.classList.remove('hidden'); }
+        function closeDetailModal() { dom.modalDetail.classList.add('hidden'); }
+
+        function resetToWelcomeState() {
+            state.searchQuery = '';
+            state.filteredData = [];
+            hideAllStates();
+            dom.welcomeState.classList.remove('hidden');
+        }
+
+        function getCSVUrl(sheetUrl) {
+            let spreadsheetId = DEFAULT_SHEET_ID;
+            let gid = null;
+
+            try {
+                if (sheetUrl.includes("docs.google.com/spreadsheets")) {
+                    const idMatch = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                    if (idMatch && idMatch[1]) {
+                        spreadsheetId = idMatch[1];
+                    }
+                    const gidMatch = sheetUrl.match(/gid=([0-9]+)/);
+                    if (gidMatch && gidMatch[1]) {
+                        gid = gidMatch[1];
+                    }
+                } else if (sheetUrl.includes("pub?")) {
+                    return sheetUrl;
+                }
+            } catch (e) {
+                console.error("URL Parser Error", e);
+            }
+
+            let exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+            if (gid !== null) exportUrl += `&gid=${gid}`;
+            return exportUrl;
+        }
+
+        function getBackupCSVUrl(sheetUrl) {
+            let spreadsheetId = DEFAULT_SHEET_ID;
+            let gid = null;
+
+            try {
+                if (sheetUrl.includes("docs.google.com/spreadsheets")) {
+                    const idMatch = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                    if (idMatch && idMatch[1]) spreadsheetId = idMatch[1];
+                    
+                    const gidMatch = sheetUrl.match(/gid=([0-9]+)/);
+                    if (gidMatch && gidMatch[1]) gid = gidMatch[1];
+                }
+            } catch (e) {
+                console.error(e);
+            }
+
+            let gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
+            if (gid !== null) gvizUrl += `&gid=${gid}`;
+            return gvizUrl;
+        }
+
+        function retryConnection() {
+            loadDatabaseSilently(true);
+        }
+
+        async function loadDatabaseSilently(forceReload = false) {
+            setSyncLoadingState(true);
+            const primaryUrl = getCSVUrl(state.sheetUrl);
+
+            try {
+                let response = await fetch(primaryUrl);
+                if (!response.ok) {
+                    const fallbackUrl = getBackupCSVUrl(state.sheetUrl);
+                    response = await fetch(fallbackUrl);
+                }
+
+                if (!response.ok) throw new Error("Connection failed");
+                
+                const csvText = await response.text();
+                
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        if (results.errors.length > 0 && results.data.length === 0) {
+                            showErrorState("ไม่พบข้อมูลยื่นกู้ หรือสิทธิ์เข้าถึงลิงก์ขัดข้อง");
+                        } else {
+                            // Clean headers immediately to prevent memory leak of sensitive values
+                            state.rawHeaders = (results.meta.fields || []).filter(h => {
+                                if (!h) return false;
+                                const hl = h.toLowerCase().trim();
+                                // Block PDPA non-compliant headers immediately at parser boundary
+                                if (hl.includes("ยินยอม") || hl.includes("consent") || hl.includes("นโยบาย") || hl.includes("เงื่อนไข") || hl.includes("ศิลปากร")) return false;
+                                if (hl === "timestamp" || hl === "ประทับเวลา") return false;
+                                if (hl.includes("email") || hl.includes("อีเมล") || hl.includes("mail")) return false;
+                                return h.trim() !== "";
+                            });
+                            
+                            state.rawData = results.data || [];
+                            state.isDatabaseLoaded = true;
+                            
+                            initPDPAConfiguration();
+                            
+                            dom.syncIndicator.className = "inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse-soft";
+                            dom.lastUpdatedText.innerText = "เชื่อมต่อฐานข้อมูลเรียลไทม์สำเร็จ";
+                            
+                            // Render Dashboard Automatically on page load
+                            buildDashboardCharts();
+                            
+                            if (forceReload && dom.searchInput.value.trim().length >= 2) {
+                                handleSearchAction();
+                            }
+                        }
+                    },
+                    error: function() {
+                        showErrorState("ไม่สามารถแยกวิเคราะห์ฐานข้อมูลได้ กรุณาเปิดสิทธิ์ชีตเป็นสาธารณะ");
+                    }
+                });
+            } catch (error) {
+                console.error(error);
+                showErrorState("การเชื่อมต่อฐานข้อมูลล้มเหลว กรุณาตรวจสอบสิทธิ์ของลิงก์ Google Sheets");
+            } finally {
+                setSyncLoadingState(false);
+            }
+        }
+
+        function initPDPAConfiguration() {
+            const savedHidden = localStorage.getItem('user_hidden_headers');
+            const savedMasked = localStorage.getItem('user_masked_headers');
+            
+            if (!savedHidden && !savedMasked) {
+                const autoMasked = [];
+                const autoHidden = [];
+                const sensitiveKeywords = ["เบอร์", "โทร", "phone", "tel", "ที่อยู่", "address", "citizen", "บัตร", "เลขประจำตัว", "เงินเดือน", "salary", "id"];
+                
+                state.rawHeaders.forEach(header => {
+                    const lowerHeader = header.toLowerCase();
+                    if (sensitiveKeywords.some(keyword => lowerHeader.includes(keyword))) {
+                        if (lowerHeader.includes("บัตร") || lowerHeader.includes("citizen") || lowerHeader.includes("salary") || lowerHeader.includes("เงินเดือน")) {
+                            autoHidden.push(header);
+                        } else {
+                            autoMasked.push(header);
+                        }
+                    }
+                });
+                
+                state.hiddenHeaders = autoHidden;
+                state.maskedHeaders = autoMasked;
+                localStorage.setItem('user_hidden_headers', JSON.stringify(autoHidden));
+                localStorage.setItem('user_masked_headers', JSON.stringify(autoMasked));
+            }
+        }
+
+        // ==========================================
+        // 📊 DYNAMIC DASHBOARD CALCULATION ENGINE
+        // ==========================================
+        function buildDashboardCharts() {
+            if (!state.isDatabaseLoaded || state.rawData.length === 0) {
+                dom.dashboardSection.classList.add('hidden');
+                return;
+            }
+
+            const visibleHeaders = state.rawHeaders;
+            const fieldMapping = identifyHeadersSemanticRoles(visibleHeaders);
+            
+            const totalApplicants = state.rawData.length;
+            let submittedCount = 0;
+            let pendingCount = 0;
+
+            // Stats arrays for student years
+            let yearData = {
+                "ชั้นปีที่ 1": 0,
+                "ชั้นปีที่ 2": 0,
+                "ชั้นปีที่ 3": 0,
+                "ชั้นปีที่ 4": 0,
+                "ปีอื่นๆ / เกินปี 4": 0,
+                "ไม่ระบุชั้นปี": 0
+            };
+
+            // Loop and aggregate raw data safely without exposing PII
+            state.rawData.forEach(row => {
+                // 1. Analyze Submission Status
+                const statusKey = fieldMapping.statusField;
+                const dateKey = fieldMapping.dateField;
+
+                const rawStatus = statusKey ? (row[statusKey] || '').toString().trim() : '';
+                const rawDate = dateKey ? (row[dateKey] || '').toString().trim() : '';
+                const isApproved = checkIsApproved(rawStatus);
+
+                // Submitted is counted if approved or they have entered a valid submission date
+                if (isApproved || (rawDate !== '' && rawDate !== '-')) {
+                    submittedCount++;
+                } else {
+                    pendingCount++;
+                }
+
+                // 2. Analyze Student Year (ชั้นปี)
+                const nameKey = fieldMapping.nameField || visibleHeaders[0];
+                let matchedYear = "ไม่ระบุชั้นปี";
+
+                // Check for year column first
+                const yearKey = fieldMapping.yearField;
+                if (yearKey && row[yearKey]) {
+                    const yrVal = row[yearKey].toString().trim();
+                    if (yrVal.includes("1") || yrVal.includes("หนึ่ง")) matchedYear = "ชั้นปีที่ 1";
+                    else if (yrVal.includes("2") || yrVal.includes("สอง")) matchedYear = "ชั้นปีที่ 2";
+                    else if (yrVal.includes("3") || yrVal.includes("สาม")) matchedYear = "ชั้นปีที่ 3";
+                    else if (yrVal.includes("4") || yrVal.includes("สี่")) matchedYear = "ชั้นปีที่ 4";
+                    else matchedYear = "ปีอื่นๆ / เกินปี 4";
+                } else {
+                    // Fallback to searching Student ID for SU standard entry codes (e.g. 68X, 67X, 66X, 65X)
+                    const idKey = fieldMapping.idField;
+                    if (idKey && row[idKey]) {
+                        const cleanId = row[idKey].toString().trim().replace(/[^0-9]/g, "");
+                        if (cleanId.length >= 8) {
+                            const prefix = cleanId.slice(0, 2);
+                            if (prefix === "68") matchedYear = "ชั้นปีที่ 1";
+                            else if (prefix === "67") matchedYear = "ชั้นปีที่ 2";
+                            else if (prefix === "66") matchedYear = "ชั้นปีที่ 3";
+                            else if (prefix === "65") matchedYear = "ชั้นปีที่ 4";
+                            else matchedYear = "ปีอื่นๆ / เกินปี 4";
+                        }
+                    }
+                }
+                yearData[matchedYear] = (yearData[matchedYear] || 0) + 1;
+            });
+
+            // Update DOM Numeric Stats & Comparison Percentages
+            dom.statTotalCount.innerText = totalApplicants.toLocaleString('th-TH');
+            dom.statSubmittedCount.innerText = submittedCount.toLocaleString('th-TH');
+            dom.statPendingCount.innerText = pendingCount.toLocaleString('th-TH');
+
+            const submittedPercent = ((submittedCount / totalApplicants) * 100).toFixed(1);
+            const pendingPercent = ((pendingCount / totalApplicants) * 100).toFixed(1);
+
+            dom.statSubmittedPercent.innerText = `คิดเป็น ${submittedPercent}% ของภาพรวม`;
+            dom.statPendingPercent.innerText = `คิดเป็น ${pendingPercent}% ของภาพรวม`;
+
+            // Reveal Dashboard Container
+            dom.dashboardSection.classList.remove('hidden');
+
+            // Render/Update Chart.js instance for Pie Chart (Submission Ratio)
+            renderPieChart(submittedCount, pendingCount);
+
+            // Render/Update Chart.js instance for Bar Chart (Grade Distribution)
+            renderBarChart(yearData);
+        }
+
+        // Creates or redraws responsive Pie Chart safely
+        function renderPieChart(submitted, pending) {
+            const ctx = document.getElementById('pieChartCanvas').getContext('2d');
+            
+            if (state.charts.pie) {
+                state.charts.pie.destroy();
+            }
+
+            state.charts.pie = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['ส่งเอกสารแล้ว', 'รอดำเนินการส่ง'],
+                    datasets: [{
+                        data: [submitted, pending],
+                        backgroundColor: ['#10b981', '#f59e0b'], // Emerald vs Amber
+                        borderColor: ['#ffffff', '#ffffff'],
+                        borderWidth: 2,
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: 'Prompt', size: 12 },
+                                color: '#475569'
+                            }
+                        },
+                        tooltip: {
+                            titleFont: { family: 'Prompt', size: 13 },
+                            bodyFont: { family: 'Prompt', size: 12 }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // Creates or redraws responsive Bar Chart safely
+        function renderBarChart(yearData) {
+            const ctx = document.getElementById('barChartCanvas').getContext('2d');
+            
+            if (state.charts.bar) {
+                state.charts.bar.destroy();
+            }
+
+            const labels = ["ปี 1", "ปี 2", "ปี 3", "ปี 4", "ปีอื่นๆ/เกินปี 4", "ไม่ระบุ"];
+            const counts = [
+                yearData["ชั้นปีที่ 1"],
+                yearData["ชั้นปีที่ 2"],
+                yearData["ชั้นปีที่ 3"],
+                yearData["ชั้นปีที่ 4"],
+                yearData["ปีอื่นๆ / เกินปี 4"],
+                yearData["ไม่ระบุชั้นปี"]
+            ];
+
+            state.charts.bar = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'จำนวนนักศึกษา (คน)',
+                        data: counts,
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.85)',  // Blue Year 1
+                            'rgba(99, 102, 241, 0.85)',  // Indigo Year 2
+                            'rgba(139, 92, 246, 0.85)',  // Purple Year 3
+                            'rgba(236, 72, 153, 0.85)',  // Pink Year 4
+                            'rgba(148, 163, 184, 0.85)', // Slate Others
+                            'rgba(203, 213, 225, 0.85)'  // Light Slate Unknown
+                        ],
+                        borderColor: [
+                            '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#94a3b8', '#cbd5e1'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                font: { family: 'Prompt', size: 11 },
+                                color: '#64748b'
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                font: { family: 'Prompt', size: 11 },
+                                color: '#64748b'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { family: 'Prompt', size: 13 },
+                            bodyFont: { family: 'Prompt', size: 12 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 🛡️ PDPA Security Rules: Checks if query string contains non-allowed scouting terms
+        function validateQuerySafety(query) {
+            const queryLower = query.toLowerCase().trim();
+            
+            // Words that represent generic status checking (scouting loophole words)
+            const statusTerms = [
+                "ผ่าน", "อนุมัติ", "สำเร็จ", "ครบ", "เสร็จสิ้น", "ปกติ", "yes", "approved", "success", "done", "active", "รับแล้ว",
+                "รอ", "อยู่ระหว่าง", "กำลังดำเนินการ", "พิจารณา", "pending", "waiting", "processing", "hold", "ยังไม่ส่ง", "ไม่ครบ",
+                "ไม่ผ่าน", "ล้มเหลว", "ไมอนุมัติ", "ยกเลิก", "ไม่ผ่านเกณฑ์", "no", "rejected", "failed", "cancelled", "inactive", "ขาดส่ง", "แก้ไข",
+                "ส่งเอกสาร"
+            ];
+
+            // Words that represent generic departments, years, or common institutional words
+            const genericTerms = [
+                "ปี 1", "ปี 2", "ปี 3", "ปี 4", "ชั้นปี", "ชั้นปีที่", "ปีที่",
+                "กยศ", "กรอ", "เงินกู้", "ยื่นกู้", "ผู้ยื่นกู้", "กองกลาง", "มหาวิทยาลัย", "ศิลปากร"
+            ];
+
+            if (statusTerms.some(term => queryLower === term || queryLower.includes(term)) ||
+                genericTerms.some(term => queryLower === term || queryLower.includes(term))) {
+                return {
+                    isValid: false,
+                    reason: "เพื่อความมั่นคงปลอดภัยและความเป็นส่วนตัวของข้อมูลตามเกณฑ์ PDPA มศก. <br><b>ระบบไม่อนุญาตให้ค้นหาด้วยสถานะเอกสาร, ชั้นปี หรือคำทั่วไปในชีต</b><br><br>กรุณาระบุเฉพาะ <b>ชื่อจริง, นามสกุล หรือ รหัสนักศึกษา</b> ของท่านเท่านั้น"
+                };
+            }
+
+            // Prevent searching with short generic numbers that can match telephone parts or generic columns
+            if (/^\d+$/.test(queryLower)) {
+                if (queryLower.length < 5) {
+                    return {
+                        isValid: false,
+                        reason: "กรุณาระบุ <b>รหัสนักศึกษาแบบตัวเต็ม</b> (ไม่สามารถใช้ตัวเลขย่อต่ำกว่า 5 หลัก เพื่อป้องกันการสุ่มเลขประจำตัวนักศึกษาท่านอื่น)"
+                    };
+                }
+            }
+
+            return { isValid: true };
+        }
+
+        function handleSearchAction() {
+            const query = dom.searchInput.value.trim().toLowerCase();
+            
+            if (query.length < 2) {
+                alert("เพื่อความปลอดภัยของข้อมูลตามกฎหมาย PDPA กรุณากรอกคำค้นหาอย่างน้อย 2 ตัวอักษรขึ้นไป");
+                return;
+            }
+
+            // Apply global query safety gate
+            const safetyCheck = validateQuerySafety(query);
+            if (!safetyCheck.isValid) {
+                showSearchWarningState(safetyCheck.reason);
+                return;
+            }
+
+            hideAllStates();
+            dom.loadingState.classList.remove('hidden');
+            state.searchQuery = query;
+
+            setTimeout(() => {
+                if (!state.isDatabaseLoaded) {
+                    showErrorState("ไม่สามารถประมวลผลได้เนื่องจากฐานข้อมูลขัดข้อง กรุณาเช็คสิทธิ์แชร์");
+                    return;
+                }
+                applySearchFilter();
+            }, 300);
+        }
+
+        function applySearchFilter() {
+            const visibleHeaders = state.rawHeaders.filter(h => !state.hiddenHeaders.includes(h));
+            const fieldMapping = identifyHeadersSemanticRoles(visibleHeaders);
+
+            // STRICT EXPLICIT LOOKUP: Filter only matching Name, LastName or Student ID fields.
+            // If they search any other data (e.g. searching "วิทยาการคอมพิวเตอร์"), it returns 0 rows.
+            state.filteredData = state.rawData.filter(row => {
+                const nameVal = fieldMapping.nameField ? (row[fieldMapping.nameField] || '').toString().toLowerCase().trim() : '';
+                const lastNameVal = fieldMapping.lastNameField ? (row[fieldMapping.lastNameField] || '').toString().toLowerCase().trim() : '';
+                const idVal = fieldMapping.idField ? (row[fieldMapping.idField] || '').toString().toLowerCase().trim() : '';
+
+                const combinedName = `${nameVal} ${lastNameVal}`.trim();
+                const searchLower = state.searchQuery.toLowerCase().trim();
+
+                // Check strict matching only against permitted PII elements
+                return idVal.includes(searchLower) || 
+                       nameVal.includes(searchLower) || 
+                       lastNameVal.includes(searchLower) || 
+                       combinedName.includes(searchLower);
+            });
+
+            dom.loadingState.classList.add('hidden');
+
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            dom.lastUpdatedText.innerText = `ตรวจสอบสิทธิ์ล่าสุดสำเร็จเมื่อเวลา ${timeStr}`;
+
+            if (state.filteredData.length === 0) {
+                dom.emptyState.classList.remove('hidden');
+            } else {
+                dom.resultCount.innerText = `พบรายชื่อผู้ยื่นกู้ ${state.filteredData.length} ท่าน`;
+                dom.dataContainer.classList.remove('hidden');
+                
+                renderTrackingCards(visibleHeaders);
+            }
+        }
+
+        function renderTrackingCards(visibleHeaders) {
+            dom.trackingCardsContainer.innerHTML = '';
+            const fieldMapping = identifyHeadersSemanticRoles(visibleHeaders);
+
+            state.filteredData.forEach(row => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-3xl border border-slate-100 shadow-md hover:shadow-xl transition-all relative overflow-hidden flex flex-col gap-5 p-6 sm:p-7";
+                
+                const nameKey = fieldMapping.nameField || visibleHeaders[0];
+                const lastNameKey = fieldMapping.lastNameField;
+                const statusKey = fieldMapping.statusField;
+                const dateKey = fieldMapping.dateField;
+                const docKey = fieldMapping.docField;
+
+                let nameVal = row[nameKey] || '-';
+                if (state.maskedHeaders.includes(nameKey) && nameVal !== '-') {
+                    nameVal = maskValue(nameVal, nameKey);
+                }
+
+                let lastNameVal = '';
+                if (lastNameKey) {
+                    lastNameVal = row[lastNameKey] || '';
+                    if (state.maskedHeaders.includes(lastNameKey) && lastNameVal !== '') {
+                        lastNameVal = maskValue(lastNameVal, lastNameKey);
+                    }
+                }
+
+                const combinedNameVal = lastNameVal ? `${nameVal} ${lastNameVal}` : nameVal;
+                const combinedNameLabel = lastNameKey ? `${nameKey} / ${lastNameKey}` : nameKey;
+
+                // Core Logic for Visual Fallbacks on Approval State
+                let rawStatusVal = statusKey ? (row[statusKey] || '').toString().trim() : '';
+                const isApproved = checkIsApproved(rawStatusVal);
+                
+                let statusVal = '';
+                if (rawStatusVal === '' || rawStatusVal === '-') {
+                    statusVal = state.fallbackStatusText;
+                } else {
+                    statusVal = rawStatusVal;
+                }
+
+                const statusDesign = getStatusVisualBlock(statusVal, isApproved);
+
+                let docVal = '-';
+                if (docKey) {
+                    docVal = row[docKey] || '-';
+                    if (state.maskedHeaders.includes(docKey) && docVal !== '-') {
+                        docVal = maskValue(docVal, docKey);
+                    }
+                }
+
+                let dateVal = '-';
+                if (dateKey) {
+                    dateVal = (row[dateKey] || '').toString().trim();
+                    if (dateVal === '') {
+                        dateVal = '-';
+                    } else if (state.maskedHeaders.includes(dateKey) && dateVal !== '-') {
+                        dateVal = maskValue(dateVal, dateKey);
+                    }
+                }
+
+                let extraRowsHTML = '';
+                visibleHeaders.forEach(header => {
+                    // Exclude nameKey, lastNameKey, statusKey, dateKey, docKey from collapsed details to prevent duplicates
+                    if (header === nameKey || header === lastNameKey || header === statusKey || header === dateKey || header === docKey) return;
+                    
+                    let val = row[header] || '-';
+                    if (state.maskedHeaders.includes(header) && val !== '-') {
+                        val = maskValue(val, header);
+                    }
+                    
+                    extraRowsHTML += `
+                        <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0 text-xs sm:text-sm text-slate-600">
+                            <span class="text-slate-400 font-medium">${header}</span>
+                            <span class="font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-xs">${val}</span>
+                        </div>
+                    `;
+                });
+
+                card.innerHTML = `
+                    <!-- Row 1: Borrower Profile (Display First Name and Last Name Completely) -->
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-2xl">
+                                <i data-lucide="user" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">${combinedNameLabel}</span>
+                                <h3 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">${combinedNameVal}</h3>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold text-emerald-600 self-start sm:self-center bg-emerald-50 border border-emerald-100/40 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                            PDPA Security Cleaned
+                        </span>
+                    </div>
+
+                    <!-- Row 2: HIGH-IMPACT STATUS BOX -->
+                    <div class="${statusDesign.containerClass} border-2 p-6 rounded-2xl transition-all flex items-start space-x-4">
+                        <div class="${statusDesign.iconWrapperClass} p-3.5 rounded-2xl flex-shrink-0 shadow-inner">
+                            <i data-lucide="${statusDesign.iconName}" class="w-8 h-8 ${statusDesign.iconAnimationClass}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <span class="text-[10px] sm:text-xs uppercase font-extrabold tracking-wider block opacity-75 mb-1 text-slate-100">ความคืบหน้าการยื่นเอกสาร</span>
+                            <h2 class="${statusDesign.textClass} font-black leading-tight tracking-tight">
+                                ${statusDesign.titleText}
+                            </h2>
+                            <p class="text-xs sm:text-sm mt-2 opacity-90 leading-relaxed font-medium">
+                                ${statusDesign.descText}
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Row 2.5: Contact Helpline Box -->
+                    <div class="flex items-start sm:items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs sm:text-sm text-slate-600 -mt-2">
+                        <div class="p-1.5 bg-blue-50 text-blue-600 rounded-lg flex-shrink-0">
+                            <i data-lucide="phone" class="w-4 h-4 animate-pulse"></i>
+                        </div>
+                        <div class="leading-relaxed">
+                            หากมีข้อสงสัยหรือสอบถาม ให้ติดต่อได้ที่เบอร์ <a href="tel:022214333" class="font-extrabold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-0.5">02-221-4333</a> ในวันและเวลาราชการ
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Grid metadata details -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-slate-50 border border-slate-100/60 p-4 rounded-xl space-y-1">
+                            <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                                <i data-lucide="folder-open" class="w-3.5 h-3.5 text-slate-400"></i>
+                                รายละเอียดรายการเอกสาร
+                            </p>
+                            <p class="text-sm font-semibold text-slate-800 truncate">${docKey ? docVal : 'เอกสารพิจารณาทั่วไป'}</p>
+                        </div>
+
+                        <div class="bg-slate-50 border border-slate-100/60 p-4 rounded-xl space-y-1">
+                            <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                                <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
+                                อัพเดทเอกสารเเล้ว เมื่อ
+                            </p>
+                            <p class="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                                ${dateVal !== '-' ? '<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse-soft"></span>' : ''}
+                                <span>${dateVal}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    ${extraRowsHTML ? `
+                        <div class="pt-1">
+                            <details class="group bg-slate-50/20 border border-slate-100 p-3.5 rounded-xl">
+                                <summary class="flex items-center justify-between cursor-pointer list-none text-xs font-bold text-slate-500 hover:text-slate-700 outline-none select-none">
+                                    <span class="flex items-center gap-1.5">
+                                        <i data-lucide="info" class="w-4 h-4 text-slate-400"></i>
+                                        เอกสารประกอบและสถานะย่อยอื่นๆ
+                                    </span>
+                                    <span class="transition group-open:rotate-180">
+                                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                                    </span>
+                                </summary>
+                                <div class="mt-4 space-y-0.5 border-t border-slate-100 pt-3">
+                                    ${extraRowsHTML}
+                                </div>
+                            </details>
+                        </div>
+                    ` : ''}
+
+                    <div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">
+                        <span class="text-slate-400 font-medium">สืบค้นโดยตรงจากระบบแผ่นงาน กองกลาง มศก.</span>
+                        <button class="inline-flex items-center space-x-1.5 text-xs font-extrabold text-blue-600 hover:text-blue-800 transition" onclick="event.stopPropagation(); showRowDetailsDirectly(this)">
+                            <span>ดูประวัติทั้งหมด</span>
+                            <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+
+                card.dataset.rowData = JSON.stringify(row);
+                card.dataset.visibleHeaders = JSON.stringify(visibleHeaders);
+                dom.trackingCardsContainer.appendChild(card);
+            });
+
+            lucide.createIcons();
+        }
+
+        function showRowDetailsDirectly(element) {
+            const card = element.closest('[data-row-data]');
+            const row = JSON.parse(card.dataset.rowData);
+            const visibleHeaders = JSON.parse(card.dataset.visibleHeaders);
+            showRowDetails(row, visibleHeaders);
+        }
+
+        // HEURISTIC SCORING ENGINE: Solves misalignments and overlapping semantic definitions
+        function identifyHeadersSemanticRoles(visibleHeaders) {
+            let statusField = null;
+            let dateField = null;
+            let docField = null;
+            let nameField = null;
+            let lastNameField = null;
+            let idField = null;
+            let yearField = null;
+
+            visibleHeaders.forEach(header => {
+                const hl = header.toLowerCase();
+                
+                // Track date strictly first
+                if (!dateField && (hl.includes("วัน") || hl.includes("เวลา") || hl.includes("date") || hl.includes("time") || hl.includes("timestamp") || hl.includes("ประทับเวลา"))) {
+                    dateField = header;
+                }
+                // Track Student ID strictly
+                if (!idField && (hl.includes("รหัส") || hl.includes("id") || hl.includes("student id") || hl.includes("เลขประจำตัว") || hl.includes("ประจำตัว"))) {
+                    idField = header;
+                }
+                // Track Year column
+                if (!yearField && (hl.includes("ชั้นปี") || hl.includes("ปี") || hl.includes("year") || hl.includes("class"))) {
+                    yearField = header;
+                }
+            });
+
+            let bestStatusScore = -1;
+            visibleHeaders.forEach(header => {
+                if (header === dateField) return;
+                const hl = header.toLowerCase();
+                let score = -1;
+                
+                if (hl === "สถานะ" || hl === "status" || hl === "ผล" || hl === "result") score = 10;
+                else if (hl.includes("สถานะ") || hl.includes("status")) score = 8;
+                else if (hl.includes("ผลการ") || hl.includes("ผลพิจารณา")) score = 6;
+                else if ((hl.includes("ยื่นกู้") || hl.includes("กู้") || hl.includes("loan")) && !hl.includes("ส่งเอกสาร") && !hl.includes("การส่ง")) score = 4;
+                
+                if (score > bestStatusScore) {
+                    bestStatusScore = score;
+                    statusField = header;
+                }
+            });
+
+            let bestNameScore = -1;
+            visibleHeaders.forEach(header => {
+                if (header === dateField || header === statusField) return;
+                const hl = header.toLowerCase().trim();
+                let score = -1;
+                
+                if (hl === "ชื่อ" || hl === "ชื่อ-นามสกุล" || hl === "ชื่อ - นามสกุล" || hl === "ชื่อจริง") score = 10;
+                else if (hl.includes("ชื่อ") && !hl.includes("นามสกุล") && !hl.includes("พ่อ") && !hl.includes("แม่") && !hl.includes("ผู้ปกครอง")) score = 8;
+                else if (hl === "name" || hl === "first name" || hl === "firstname") score = 7;
+                else if (hl.includes("name")) score = 5;
+                
+                if (score > bestNameScore) {
+                    bestNameScore = score;
+                    nameField = header;
+                }
+            });
+
+            let bestLastNameScore = -1;
+            visibleHeaders.forEach(header => {
+                if (header === dateField || header === statusField || header === nameField) return;
+                const hl = header.toLowerCase().trim();
+                let score = -1;
+                
+                if (hl === "นามสกุล" || hl === "สกุล" || hl === "last name" || hl === "surname" || hl === "lastname") score = 10;
+                else if (hl.includes("นามสกุล") || hl.includes("สกุล")) score = 8;
+                
+                if (score > bestLastNameScore) {
+                    bestLastNameScore = score;
+                    lastNameField = header;
+                }
+            });
+
+            visibleHeaders.forEach(header => {
+                if (header === dateField || header === statusField || header === nameField || header === lastNameField) return;
+                const hl = header.toLowerCase();
+                if (!docField && (hl.includes("เอกสาร") || hl.includes("ส่ง") || hl.includes("งาน") || hl.includes("doc") || hl.includes("ไฟล์"))) {
+                    docField = header;
+                }
+            });
+
+            return {
+                nameField: nameField || visibleHeaders[0],
+                lastNameField: lastNameField || null,
+                statusField: statusField || visibleHeaders[1] || null,
+                dateField: dateField || visibleHeaders[2] || null,
+                docField: docField || visibleHeaders[3] || null,
+                idField: idField || null,
+                yearField: yearField || null
+            };
+        }
+
+        function checkIsApproved(rawStatus) {
+            if (!rawStatus) return false;
+            const text = rawStatus.toString().trim().toLowerCase();
+            const approvedMatches = ["อนุมัติ", "ผ่าน", "สำเร็จ", "ครบ", "เสร็จสิ้น", "ปกติ", "yes", "approved", "success", "done", "active", "รับแล้ว"];
+            return approvedMatches.some(term => text.includes(term));
+        }
+
+        function maskValue(val, headerName = "") {
+            if (!val) return "-";
+            const str = val.toString().trim();
+            if (str === "" || str === "-") return "-";
+
+            const cleanPhone = str.replace(/[- ]/g, "");
+            if (/^\d{9,10}$/.test(cleanPhone)) {
+                if (cleanPhone.length === 10) {
+                    return `${cleanPhone.slice(0, 3)}-***-${cleanPhone.slice(7)}`;
+                } else {
+                    return `${cleanPhone.slice(0, 2)}-***-${cleanPhone.slice(6)}`;
+                }
+            }
+
+            if (/^\d{13}$/.test(cleanPhone)) {
+                return `${cleanPhone[0]}-${cleanPhone.slice(1,3)}**-*****` + `-${cleanPhone.slice(10,12)}-${cleanPhone[12]}`;
+            }
+
+            if (str.length <= 3) {
+                return str[0] + "*".repeat(str.length - 1);
+            }
+            const keep = Math.ceil(str.length * 0.25);
+            const maskLen = str.length - (keep * 2);
+            if (maskLen > 0) {
+                return str.slice(0, keep) + "*".repeat(maskLen) + str.slice(str.length - keep);
+            }
+            return str[0] + "*".repeat(str.length - 2) + str[str.length - 1];
+        }
+
+        function getStatusVisualBlock(statusVal, isApproved) {
+            if (isApproved) {
+                const displayTitle = (statusVal.toLowerCase() === 'ผ่าน' || statusVal.toLowerCase() === 'approved') 
+                    ? "ผ่านการพิจารณาอนุมัติเรียบร้อยแล้ว 🎉" 
+                    : statusVal;
+                return {
+                    containerClass: "bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-600 text-white shadow-xl shadow-emerald-500/10 rounded-2xl",
+                    iconWrapperClass: "bg-white/20 text-white",
+                    iconName: "shield-check",
+                    iconAnimationClass: "scale-110",
+                    titleText: displayTitle,
+                    descText: "ยินดีด้วย! เอกสารและขั้นตอนการยื่นกู้ของท่านเสร็จสมบูรณ์เรียบร้อย"
+                };
+            } else {
+                if (statusVal === state.fallbackStatusText) {
+                    return {
+                        containerClass: "bg-gradient-to-br from-amber-500 to-orange-600 border-amber-600 text-white shadow-xl shadow-amber-500/10 rounded-2xl animate-pulse-soft",
+                        iconWrapperClass: "bg-white/20 text-white",
+                        iconName: "alert-circle",
+                        iconAnimationClass: "",
+                        titleText: "ให้ทำการส่งเอกสารตามเวลาที่กำหนด",
+                        descText: "เพื่อดำเนินการในขั้นตอนต่อไป (สถานะปัจจุบันของท่าน: ยังไม่มีข้อมูลการอัปเดตสถานะ)"
+                    };
+                } else {
+                    return {
+                        containerClass: "bg-gradient-to-br from-amber-500 to-orange-600 border-amber-600 text-white shadow-xl shadow-amber-500/10 rounded-2xl animate-pulse-soft",
+                        iconWrapperClass: "bg-white/20 text-white",
+                        iconName: "alert-circle",
+                        iconAnimationClass: "",
+                        titleText: statusVal,
+                        descText: "ให้ทำการส่งเอกสารตามเวลาที่กำหนด เพื่อดำเนินการในขั้นตอนต่อไป"
+                    };
+                }
+            }
+        }
+
+        function renderPDPASettings() {
+            dom.pdpaHeadersList.innerHTML = '';
+            if (state.rawHeaders.length === 0) {
+                dom.pdpaHeadersList.innerHTML = `<p class="text-xs text-slate-400 italic text-center py-2">จะแสดงรายชื่อคอลัมน์เมื่อระบบตรวจสอบฐานข้อมูลชีตสำเร็จ</p>`;
+                return;
+            }
+
+            state.rawHeaders.forEach(header => {
+                const isHidden = state.hiddenHeaders.includes(header);
+                const isMasked = state.maskedHeaders.includes(header);
+                const isNormal = !isHidden && !isMasked;
+
+                const div = document.createElement('div');
+                div.className = "flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-white border border-slate-100 rounded-lg gap-2";
+                
+                div.innerHTML = `
+                    <span class="font-semibold text-slate-700 truncate text-xs sm:text-sm max-w-[200px]">${header}</span>
+                    <div class="flex items-center space-x-3 flex-shrink-0 text-[11px] sm:text-xs">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="pdpa_${header}" value="normal" ${isNormal ? 'checked' : ''} class="text-blue-600 focus:ring-blue-500 w-3 h-3">
+                            <span class="ml-1 text-slate-600">แสดงปกติ</span>
+                        </label>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="pdpa_${header}" value="mask" ${isMasked ? 'checked' : ''} class="text-amber-600 focus:ring-amber-500 w-3 h-3">
+                            <span class="ml-1 text-amber-600">เซ็นเซอร์</span>
+                        </label>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="pdpa_${header}" value="hide" ${isHidden ? 'checked' : ''} class="text-rose-600 focus:ring-rose-500 w-3 h-3">
+                            <span class="ml-1 text-rose-600">ซ่อน</span>
+                        </label>
+                    </div>
+                `;
+                dom.pdpaHeadersList.appendChild(div);
+            });
+        }
+
+        function showRowDetails(row, visibleHeaders) {
+            dom.detailFieldsContainer.innerHTML = '';
+            const fieldMapping = identifyHeadersSemanticRoles(visibleHeaders);
+            
+            visibleHeaders.forEach(header => {
+                let val = (row[header] || '').toString().trim();
+                const isMasked = state.maskedHeaders.includes(header);
+                const isApproved = checkIsApproved(val);
+                
+                if (header === fieldMapping.statusField) {
+                    if (val === '' || val === '-') {
+                        val = state.fallbackStatusText;
+                    }
+                } else if (!val || val === "") {
+                    val = "-";
+                }
+
+                if (isMasked && val !== '-' && val !== state.fallbackStatusText) {
+                    val = maskValue(val, header);
+                }
+                
+                const badgeClass = getStatusBadgeStyles(val, isApproved);
+                
+                let valueMarkup = '';
+                if (badgeClass) {
+                    valueMarkup = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${val}</span>`;
+                } else {
+                    valueMarkup = `<span class="text-slate-800 font-medium break-all select-all text-xs sm:text-sm">${val}</span>`;
+                }
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = "py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 text-sm";
+                itemDiv.innerHTML = `
+                    <span class="text-slate-400 font-medium sm:max-w-[40%] text-xs sm:text-sm">${header}</span>
+                    <div class="sm:text-right">${valueMarkup}</div>
+                `;
+                
+                dom.detailFieldsContainer.appendChild(itemDiv);
+            });
+
+            openDetailModal();
+        }
+
+        function getStatusBadgeStyles(val, isApproved) {
+            if (!val) return null;
+            if (!isApproved && val === state.fallbackStatusText) {
+                return "bg-amber-500 text-white border border-amber-600 shadow-sm";
+            }
+            if (isApproved) {
+                return "bg-emerald-500 text-white border border-emerald-600 shadow-sm";
+            }
+            return "bg-amber-100 text-amber-800 border border-amber-200";
+        }
+
+        function setSyncLoadingState(isLoading) {
+            if (isLoading) {
+                dom.syncIcon.classList.add('animate-spin');
+                dom.btnSync.disabled = true;
+                dom.btnSync.classList.add('opacity-75');
+            } else {
+                dom.syncIcon.classList.remove('animate-spin');
+                dom.btnSync.disabled = false;
+                dom.btnSync.classList.remove('opacity-75');
+            }
+        }
+
+        function hideAllStates() {
+            dom.welcomeState.classList.add('hidden');
+            dom.loadingState.classList.add('hidden');
+            dom.errorState.classList.add('hidden');
+            dom.searchWarningState.classList.add('hidden'); // Reset security warning
+            dom.emptyState.classList.add('hidden');
+            dom.dataContainer.classList.add('hidden');
+            dom.connStatusBanner.classList.add('hidden');
+        }
+
+        function showErrorState(msg) {
+            hideAllStates();
+            dom.errorMessage.innerText = msg;
+            dom.errorState.classList.remove('hidden');
+            dom.connStatusBanner.classList.remove('hidden');
+            
+            dom.syncIndicator.className = "inline-block w-2.5 h-2.5 rounded-full bg-rose-500";
+            dom.lastUpdatedText.innerText = "เกิดข้อผิดพลาดในการดึงข้อมูลล่าสุด";
+        }
+
+        // Beautifully displays PDPA security validation notifications
+        function showSearchWarningState(msg) {
+            hideAllStates();
+            dom.searchWarningMessage.innerHTML = msg;
+            dom.searchWarningState.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
